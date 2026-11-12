@@ -240,6 +240,8 @@ local function closePanels(instant)
 	if dim then tween(dim, 0.2, { BackgroundTransparency = 1 }) end
 	openPanel = nil
 	if refs.Picker then refs.Picker.Visible = false end
+	-- bring Old Gill's tutorial back if a menu had pushed it aside
+	if refs.Tutorial and refs.TutHidden then refs.TutHidden = false refs.Tutorial.Visible = true end
 end
 UI.ClosePanels = function() closePanels() end
 
@@ -249,6 +251,7 @@ local function showPanel(name)
 	local p = panels[name]
 	p.Visible = true
 	openPanel = name
+	if refs.Tutorial and refs.Tutorial.Visible then refs.Tutorial.Visible = false refs.TutHidden = true end
 	p.GroupTransparency = 1
 	local sc = p:FindFirstChild("Pop")
 	sc.Scale = 0.95
@@ -555,7 +558,7 @@ local function pill(parent, props, accent)
 end
 
 local function buildHUD()
-	dim = make("Frame", { Name = "Dim", Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(4, 5, 10), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 9, Active = false }, root)
+	dim = make("Frame", { Name = "Dim", Position = UDim2.fromOffset(0, -200), Size = UDim2.new(1, 0, 1, 400), BackgroundColor3 = rgb(4, 5, 10), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 9, Active = false }, root)
 
 	-- money + bag (bottom-right, big cream italic like the reference)
 	local wallet = make("Frame", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -18, 1, -14), Size = UDim2.fromOffset(320, 74), BackgroundTransparency = 1 }, root)
@@ -868,7 +871,7 @@ local function detailBar(parent, d, sellMode, onRefresh)
 	local f
 	for _, x in d.Fish do if x.u == selectedUid then f = x end end
 	if not f then
-		title(parent, { Size = UDim2.fromScale(1, 1), Text = #d.Fish > 0 and "Select a fish to see it here" or "No fish yet — go cast a line!", TextSize = 17, TextColor3 = C.Sub,
+		title(parent, { Size = UDim2.fromScale(1, 1), Text = #d.Fish > 0 and "Select a fish to see it here" or "Caught fish show up here", TextSize = 17, TextColor3 = C.Sub,
 			TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 13 })
 		return
 	end
@@ -922,6 +925,8 @@ local function fishBrowser(container, sellMode)
 	end
 	local w = well(container, { Position = UDim2.fromOffset(140, 0), Size = UDim2.new(1, -140, 1, -84), ZIndex = 11 })
 	grid = scroller(w, { Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -12) })
+	local empty = title(w, { Size = UDim2.fromScale(1, 1), Text = sellMode and "Nothing to sell yet — go cast a line!" or "Your bag is empty — go cast a line!", TextSize = 22,
+		TextColor3 = C.Sub, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 13, Visible = false })
 	make("UIGridLayout", { CellSize = UDim2.fromOffset(134, 96), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, grid)
 	make("UIPadding", { PaddingTop = UDim.new(0, 3), PaddingLeft = UDim.new(0, 3), PaddingRight = UDim.new(0, 3), PaddingBottom = UDim.new(0, 3) }, grid)
 	detail = tile(container, { Position = UDim2.new(0, 140, 1, -76), Size = UDim2.new(1, -140, 0, 70), BackgroundColor3 = C.Panel2, ZIndex = 12 }, nil)
@@ -941,6 +946,7 @@ local function fishBrowser(container, sellMode)
 			end, f.u == selectedUid)
 		end
 		if not found then selectedUid = nil end
+		empty.Visible = #list == 0
 		detailBar(detail, d, sellMode)
 	end
 	return api
@@ -1151,6 +1157,7 @@ local function buildTutorial()
 end
 function UI.OpenTutorial(page)
 	closePanels()
+	refs.TutHidden = false
 	local t = refs.Tutorial
 	tutPage = math.clamp(page, 1, #Config.TutorialPages)
 	local pg = Config.TutorialPages[tutPage]
