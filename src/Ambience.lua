@@ -159,7 +159,7 @@ for i = 1, 60 do
 	local g = Instance.new("Part")
 	g.Name = "Glint"
 	g.Anchored = true g.CanCollide = false g.CanQuery = false g.CanTouch = false g.CastShadow = false
-	g.Material = Enum.Material.SmoothPlastic g.Transparency = 1 g.Size = Vector3.new(1, 0.12, 1)
+	g.Material = Enum.Material.Plastic g.TopSurface = Enum.SurfaceType.Studs g.Transparency = 1 g.Size = Vector3.new(1, 0.12, 1)
 	g.Parent = holder
 	tiles[i] = { part = g, born = -100 }
 end
@@ -252,13 +252,13 @@ end)
 
 ------------------------------------------------------------------ crisp sea surface (Map.Sea)
 -- (parts can arrive late with streaming, so the lists are rebuilt whenever a piece shows up)
-local seaTop, seaDeep = {}, {}
+local seaTop, seaDeep, seaSheen = {}, {}, {}
 local deepHidden = false
 task.spawn(function()
 	local map = workspace:WaitForChild("Map", 60)
 	local sea = map and map:WaitForChild("Sea", 60)
 	if not sea then return end
-	local surf, deep = sea:WaitForChild("Surface", 60), sea:WaitForChild("Deep", 60)
+	local surf, deep, studs = sea:WaitForChild("Surface", 60), sea:WaitForChild("Deep", 60), sea:WaitForChild("StudSheen", 60)
 	local function rebuild()
 		local top = {}
 		for _, p in surf:GetChildren() do
@@ -270,10 +270,20 @@ task.spawn(function()
 		end
 		local dp = {}
 		for _, p in deep:GetChildren() do if p:IsA("BasePart") then p.Transparency = deepHidden and 1 or 0 table.insert(dp, p) end end
-		seaTop, seaDeep = top, dp
+		local sh = {}
+		if studs then
+			for _, p in studs:GetChildren() do
+				if p:IsA("BasePart") then
+					local base = p:GetAttribute("BasePos") or p.Position
+					p:SetAttribute("BasePos", base)
+					table.insert(sh, { part = p, base = base })
+				end
+			end
+		end
+		seaTop, seaDeep, seaSheen = top, dp, sh
 	end
 	rebuild()
-	for _, f in { surf, deep } do
+	for _, f in { surf, deep, studs } do
 		f.ChildAdded:Connect(function() task.defer(rebuild) end)
 		f.ChildRemoved:Connect(function() task.defer(rebuild) end)
 	end
@@ -440,6 +450,13 @@ RunService.RenderStepped:Connect(function(dt)
 		s.part.Color = seaCol
 		if s.t1 then s.t1.OffsetStudsU = (t * 0.9) % 48 s.t1.OffsetStudsV = (t * 0.45) % 48 s.t1.Color3 = sheenCol end
 		if s.t2 then s.t2.OffsetStudsU = (-t * 0.6) % 77 s.t2.OffsetStudsV = (t * 0.75) % 77 s.t2.Color3 = sheenCol end
+	end
+	-- the old lake trick: a faint studded sheet drifting over the studded surface, so the stud grids slide past each other
+	local sx, sz = math.sin(t * 0.31) * 0.5, math.cos(t * 0.23) * 0.5
+	local sheenT = 0.86 + math.sin(t * 0.7) * 0.03
+	for _, s in seaSheen do
+		s.part.Position = s.base + Vector3.new(sx, bob, sz)
+		s.part.Transparency = sheenT
 	end
 	local deepCol = DEEP_DAY:Lerp(DEEP_NIGHT, night * 0.6)
 	if camWet ~= deepHidden then
