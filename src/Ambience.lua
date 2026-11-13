@@ -2,7 +2,10 @@
 	Ambience: the island's living atmosphere on each client.
 	  - time of day: lighting, fog and water colour blended every frame from Shared.DayCycle
 	  - aurora event (server sets workspace "Aurora"): flowing ribbons fade in/out, subtle shimmer on the sea
-	  - living ocean: moving light glints toward the sun/moon, foam washing along the shorelines,
+	  - crisp sea (Map.Sea): the old lake look - a clear blue sheet that bobs, shimmers between two blues,
+	    with a drifting faceted sheen and little square sparkles (engine water underneath is only for
+	    swimming / drowning / fishing and is drawn invisibly from above)
+	  - living ocean: foam washing along the shorelines,
 	    ripples around dock posts and little rings out on the water (engine waves + reflections underneath)
 	  - underwater: tint/visibility that deepen with depth and follow the time of day, light shafts by day,
 	    plankton, small fish schools near the reefs, breath bubbles
@@ -150,8 +153,26 @@ local function emitter(props)
 	e.Parent = fxAtt
 	return e
 end
-local glint = emitter({ Texture = Assets.FineStar, LightEmission = 1, LightInfluence = 0, Brightness = 2, Speed = NumberRange.new(0),
-	Lifetime = NumberRange.new(0.35, 0.8), Size = ns(0, 0, 0.35, 0.55, 1, 0), Rotation = NumberRange.new(0, 90), ZOffset = 0.5 })
+-- sparkles: little square tiles that flash on the water (the old lake's glints, without studs)
+local tiles, tileI = {}, 0
+for i = 1, 60 do
+	local g = Instance.new("Part")
+	g.Name = "Glint"
+	g.Anchored = true g.CanCollide = false g.CanQuery = false g.CanTouch = false g.CastShadow = false
+	g.Material = Enum.Material.SmoothPlastic g.Transparency = 1 g.Size = Vector3.new(1, 0.12, 1)
+	g.Parent = holder
+	tiles[i] = { part = g, born = -100 }
+end
+local GLINT_LIFE = 1.4
+local function glintTile(p, col)
+	tileI = tileI % #tiles + 1
+	local g = tiles[tileI]
+	local sz = rng:NextInteger(1, 2)
+	g.part.Size = Vector3.new(sz, 0.12, sz)
+	g.part.CFrame = CFrame.new(math.floor(p.X) + 0.5, WL + 0.14, math.floor(p.Z) + 0.5)
+	g.part.Color = col
+	g.born = os.clock()
+end
 local foam = emitter({ Texture = Assets.Foam, LightInfluence = 1, Orientation = Enum.ParticleOrientation.VelocityPerpendicular,
 	EmissionDirection = Enum.NormalId.Top, Speed = NumberRange.new(0.01), Lifetime = NumberRange.new(2.4, 3.6),
 	Size = ns(0, 3, 1, 9), Transparency = ns(0, 1, 0.15, 0.45, 1, 1), Rotation = NumberRange.new(0, 360), RotSpeed = NumberRange.new(-8, 8) })
@@ -229,6 +250,38 @@ task.spawn(function()
 	end
 end)
 
+------------------------------------------------------------------ crisp sea surface (Map.Sea)
+-- (parts can arrive late with streaming, so the lists are rebuilt whenever a piece shows up)
+local seaTop, seaDeep = {}, {}
+local deepHidden = false
+task.spawn(function()
+	local map = workspace:WaitForChild("Map", 60)
+	local sea = map and map:WaitForChild("Sea", 60)
+	if not sea then return end
+	local surf, deep = sea:WaitForChild("Surface", 60), sea:WaitForChild("Deep", 60)
+	local function rebuild()
+		local top = {}
+		for _, p in surf:GetChildren() do
+			if p:IsA("BasePart") then
+				local cf = p:GetAttribute("BaseY") and (p.CFrame - Vector3.new(0, p.Position.Y - p:GetAttribute("BaseY"), 0)) or p.CFrame
+				p:SetAttribute("BaseY", cf.Position.Y)
+				table.insert(top, { part = p, cf = cf, t1 = p:FindFirstChild("Sheen1"), t2 = p:FindFirstChild("Sheen2") })
+			end
+		end
+		local dp = {}
+		for _, p in deep:GetChildren() do if p:IsA("BasePart") then p.Transparency = deepHidden and 1 or 0 table.insert(dp, p) end end
+		seaTop, seaDeep = top, dp
+	end
+	rebuild()
+	for _, f in { surf, deep } do
+		f.ChildAdded:Connect(function() task.defer(rebuild) end)
+		f.ChildRemoved:Connect(function() task.defer(rebuild) end)
+	end
+end)
+local SEA_DAY, SEA_HI, SEA_NIGHT = rgb(45, 155, 235), rgb(80, 190, 250), rgb(34, 92, 170)
+local DEEP_DAY, DEEP_NIGHT = rgb(28, 112, 196), rgb(16, 52, 116)
+local SHEEN, SHEEN_AURORA = rgb(220, 245, 255), rgb(150, 255, 210)
+
 ------------------------------------------------------------------ main loop
 local atmos = Lighting:FindFirstChildOfClass("Atmosphere")
 local grade = Lighting:FindFirstChild("Grade")
@@ -303,7 +356,7 @@ RunService.RenderStepped:Connect(function(dt)
 		TERRAIN.WaterTransparency = (0.9 - 0.08 * night) - 0.32 * depthK
 	else
 		TERRAIN.WaterColor = v.Water
-		TERRAIN.WaterTransparency = v.WaterT
+		TERRAIN.WaterTransparency = 1 -- the crisp sea parts are the visible surface
 	end
 	if under > 0.01 then
 		cc.Enabled = true blur.Enabled = true
@@ -347,14 +400,14 @@ RunService.RenderStepped:Connect(function(dt)
 		flat = flat.Magnitude > 0.05 and flat.Unit or Vector3.new(0, 0, -1)
 		local sideV = Vector3.new(-flat.Z, 0, flat.X)
 		-- glints gather along the path of the sun / moon on the water
-		glint.Color = ColorSequence.new(rgb(255, 250, 232):Lerp(rgb(255, 176, 120), math.clamp((h - 16.8) / 1.5, 0, 1) * (h < 19.5 and 1 or 0)):Lerp(rgb(170, 200, 255), night):Lerp(rgb(140, 255, 210), auroraK * 0.6))
-		glintAcc += dt * (day * 50 + night * 22)
+		local gcol = rgb(255, 255, 255):Lerp(rgb(255, 176, 120), math.clamp((h - 16.8) / 1.5, 0, 1) * (h < 19.5 and 1 or 0)):Lerp(rgb(170, 200, 255), night):Lerp(rgb(140, 255, 210), auroraK * 0.6)
+		glintAcc += dt * (day * 16 + night * 6)
 		while glintAcc >= 1 do
 			glintAcc -= 1
-			local d = rng:NextNumber(12, 170)
+			local d = rng:NextNumber(10, 110)
 			local p = cp + flat * d + sideV * rng:NextNumber(-1, 1) * (6 + d * 0.28)
 			p = Vector3.new(p.X, WL + 0.15, p.Z)
-			if Water.InLake(p) then emitAt(glint, p) end
+			if Water.InLake(p) then glintTile(p, gcol) end
 		end
 		-- foam washing up along the shore near you
 		foam.Color = ColorSequence.new(rgb(255, 255, 255):Lerp(rgb(150, 170, 205), night))
@@ -375,6 +428,32 @@ RunService.RenderStepped:Connect(function(dt)
 			local p
 			if rng:NextNumber() < 0.6 then p = posts[rng:NextInteger(1, #posts)] else p = water[rng:NextInteger(1, math.max(1, #water))] end
 			if p and (p - cp).Magnitude < 140 then emitAt(ring, p + Vector3.new(rng:NextNumber(-0.4, 0.4), 0, rng:NextNumber(-0.4, 0.4))) end
+		end
+	end
+
+	-- crisp sea: gentle bob, colour shimmer, sliding sheen, square sparkles fading
+	local bob = math.sin(t * 0.8) * 0.05
+	local seaCol = SEA_DAY:Lerp(SEA_HI, (math.sin(t * 0.45) + 1) * 0.22):Lerp(SEA_NIGHT, night * 0.6)
+	local sheenCol = SHEEN:Lerp(SHEEN_AURORA, auroraK * 0.6)
+	for _, s in seaTop do
+		s.part.CFrame = s.cf + Vector3.new(0, bob, 0)
+		s.part.Color = seaCol
+		if s.t1 then s.t1.OffsetStudsU = (t * 0.9) % 48 s.t1.OffsetStudsV = (t * 0.45) % 48 s.t1.Color3 = sheenCol end
+		if s.t2 then s.t2.OffsetStudsU = (-t * 0.6) % 77 s.t2.OffsetStudsV = (t * 0.75) % 77 s.t2.Color3 = sheenCol end
+	end
+	local deepCol = DEEP_DAY:Lerp(DEEP_NIGHT, night * 0.6)
+	if camWet ~= deepHidden then
+		deepHidden = camWet
+		for _, p in seaDeep do p.Transparency = camWet and 1 or 0 end -- see the seabed while swimming
+	end
+	for _, p in seaDeep do p.Color = deepCol end
+	for _, g in tiles do
+		local age = t - g.born
+		if age < GLINT_LIFE then
+			local f = age < 0.5 and age / 0.5 or 1 - (age - 0.5) / (GLINT_LIFE - 0.5)
+			g.part.Transparency = 1 - 0.75 * math.clamp(f, 0, 1)
+		elseif g.part.Transparency < 1 then
+			g.part.Transparency = 1
 		end
 	end
 
