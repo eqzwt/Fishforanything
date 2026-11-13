@@ -48,6 +48,17 @@ local function grain(parent, alpha, z)
 	return g
 end
 
+-- item art: a muted, themed picture that sits behind the item's name (rods, bait, chum)
+local ICONS = {
+	Rod_Bamboo = 116916018365987, Rod_Driftwood = 82295268065727, Rod_Fiberglass = 77534130351497, Rod_Carbon = 74685754008434,
+	Rod_CoralReef = 87841585280443, Rod_DeepSea = 102518439085150, Rod_Golden = 79803407093077, Rod_Stormcaller = 124448512161261,
+	Rod_Abyssal = 132058795566384, Rod_Celestial = 137507296757786, Rod_Leviathan = 107850461499207,
+	Bait_Worm = 70801404314113, Bait_Minnow = 79198491834122, Bait_Shrimp = 108862341364053, Bait_GlowWorm = 135954374241892,
+	Bait_Lucky = 100751089030534, Bait_Golden = 94483244195280,
+	Chum_Basic = 103907302874223, Chum_Premium = 99046417406091, Chum_Lucky = 101635185413295,
+}
+UI.Icons = ICONS
+
 UI.Data = nil
 local handlers
 local gui, root, scaleObj
@@ -90,7 +101,7 @@ local function title(parent, props)
 	if props.TextStrokeTransparency == nil then t.TextStrokeTransparency = 0.55 end
 	return t
 end
--- a dark surface; `accent` gives it a thin neon outline and a soft glow of that colour rising from the bottom
+-- a dark surface (optionally with a subtle top-lit shade)
 local function frame(parent, props, r, flat)
 	local f = make("Frame", { BackgroundColor3 = C.Panel2, BorderSizePixel = 0 }, parent)
 	for k, v in props do f[k] = v end
@@ -100,6 +111,7 @@ local function frame(parent, props, r, flat)
 	end
 	return f
 end
+-- a soft glow of `color` rising from the bottom of a surface
 local function tint(parent, color, strength, z)
 	local t = make("Frame", { Name = "Tint", BackgroundColor3 = color, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
 		Size = UDim2.fromScale(1, 0.6), ZIndex = z or parent.ZIndex }, parent)
@@ -107,6 +119,7 @@ local function tint(parent, color, strength, z)
 	make("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 1 - (strength or 0.45)) }) }, t)
 	return t
 end
+-- dark tile with a thin outline; `accent` tints the outline and the bottom glow
 local function tile(parent, props, accent, z)
 	local f = frame(parent, props, RADIUS, true)
 	f.BackgroundColor3 = props.BackgroundColor3 or C.Panel2
@@ -114,7 +127,7 @@ local function tile(parent, props, accent, z)
 	if accent then tint(f, accent, 0.42, z or f.ZIndex) end
 	return f
 end
--- outlined button: dark fill, neon outline + text in its accent colour, smooth hover / press
+-- hover / press feel shared by every button: gentle scale, brighter outline, faint fill
 local function interact(b, st, accent, sc)
 	local hover, down = false, false
 	local base = b.BackgroundColor3
@@ -130,8 +143,9 @@ local function interact(b, st, accent, sc)
 	b.SelectionGained:Connect(function() hover = true upd() end)
 	b.SelectionLost:Connect(function() hover = false upd() end)
 end
+-- outlined button: dark fill, neon outline + text in its accent colour.
+-- (BackgroundColor3 passed in is treated as the button's accent colour)
 local function button(parent, props, onClick)
-	-- BackgroundColor3 passed in is treated as the button's accent colour (outline + text)
 	local accent = props.BackgroundColor3 or C.Accent
 	local b = make("TextButton", { AutoButtonColor = false, BackgroundColor3 = C.Panel2, BorderSizePixel = 0, FontFace = HEAD, TextSize = 16, Text = "",
 		TextStrokeColor3 = C.Ink, TextStrokeTransparency = 0.6, SelectionImageObject = nil }, parent)
@@ -150,7 +164,7 @@ local function button(parent, props, onClick)
 	end
 	return b
 end
--- recolour an existing outlined button (used for selection states)
+-- recolour an existing outlined button (selection states)
 local function setAccent(b, accent, filled)
 	local st = b:FindFirstChildOfClass("UIStroke")
 	if st then st.Color = accent end
@@ -161,6 +175,17 @@ local function setAccent(b, accent, filled)
 		t.UIGradient.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, filled and 0.45 or 0.82) })
 	end
 end
+-- muted item picture filling its tile (text goes on top)
+local function art(parent, key, tint, z, alpha, scale)
+	local id = ICONS[key]
+	if not id then return nil end
+	return make("ImageLabel", { Name = "Art", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(scale or 0.94, scale or 0.94), Image = "rbxassetid://" .. id, ImageColor3 = (tint or WHITE):Lerp(WHITE, 0.5),
+		ImageTransparency = alpha or 0.6, ScaleType = Enum.ScaleType.Fit, ZIndex = z or parent.ZIndex }, parent)
+end
+-- tile label: "Bamboo Rod" -> "Bamboo"
+local function shortName(name) return (name:gsub(" Rod$", "")) end
+
 local function act(name, a, b)
 	local res = handlers.Action(name, a, b)
 	if type(res) == "table" and res.msg then UI.Notify(res.msg, res.ok and C.Green or C.Red) end
@@ -267,7 +292,7 @@ UI.TogglePanel = togglePanel
 function UI.IsPanelOpen() return openPanel ~= nil end
 function UI.OpenPanel() return openPanel end
 
--- big italic title, outlined close button, optional subtitle line; body below
+-- big italic title, outlined close button; body below
 local function makePanel(name, titleText, accent)
 	accent = accent or C.Accent
 	local p = make("CanvasGroup", { Name = name, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromOffset(PANEL_W, PANEL_H),
@@ -436,12 +461,32 @@ local function selectSlot(i)
 end
 UI.SelectSlot = selectSlot
 
--- tier colour for a rod: cheap rods cool/muted, top rods hot
+local SLOT = 72 -- hotbar tile size
+-- tier colour for a rod: cheap rods cool, top rods hot
 local function rodTier(r)
 	local n = #Config.Rods
 	local k = (r.Order - 1) / math.max(1, n - 1)
 	if k < 0.2 then return C.Accent elseif k < 0.45 then return C.Green elseif k < 0.65 then return C.Gold elseif k < 0.85 then return C.Orange end
 	return C.Purple
+end
+
+-- fit the hotbar to the screen (shrinks evenly when you own lots of gear), then keep the money
+-- readout clear of it: lift it above the bar when they'd touch
+local function fitWallet()
+	local bar, money, wallet, hs = refs.Bar, refs.Money, refs.Wallet, refs.BarScale
+	if not (bar and money and wallet and hs and root) then return end
+	local s = scaleObj and scaleObj.Scale or 1
+	local natural = bar.AbsoluteSize.X / math.max(hs.Scale, 0.01)
+	local avail = root.AbsoluteSize.X - 28 * s
+	hs.Scale = math.clamp(avail / math.max(natural, 1), 0.55, 1)
+	local barRight = root.AbsolutePosition.X + root.AbsoluteSize.X / 2 + natural * hs.Scale / 2
+	local textLeft = wallet.AbsolutePosition.X + wallet.AbsoluteSize.X - math.max(money.TextBounds.X, refs.BagText.TextBounds.X)
+	local lifted = wallet:GetAttribute("Lifted") == true
+	local clash = barRight > textLeft - 12 * s
+	if clash ~= lifted then
+		wallet:SetAttribute("Lifted", clash)
+	end
+	wallet.Position = UDim2.new(1, -18, 1, clash and -math.floor(SLOT * hs.Scale + 20) or -14)
 end
 
 local function rebuildHotbar(d)
@@ -467,16 +512,17 @@ local function rebuildHotbar(d)
 	local bar = refs.HotSlots
 	for i, it in items do
 		it.Edge = it.Color:Lerp(C.Edge, 0.55)
-		local b = make("TextButton", { AutoButtonColor = false, Text = "", BackgroundColor3 = C.Panel2, BorderSizePixel = 0, Size = UDim2.fromOffset(62, 62), LayoutOrder = i, ZIndex = 3 }, bar)
+		local b = make("TextButton", { AutoButtonColor = false, Text = "", BackgroundColor3 = C.Panel2, BorderSizePixel = 0, Size = UDim2.fromOffset(SLOT, SLOT), LayoutOrder = i, ZIndex = 3 }, bar)
 		round(b, RADIUS)
 		local st = stroke(b, it.Edge, 1.5, 0)
 		local tn = tint(b, it.Color, 0.4, 3)
 		local lift = make("UIScale", {}, b)
 		local inner = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 4 }, b)
-		if it.Kind == "Rod" then
-			rodIcon(inner, it.Cfg, 5)
-		else
-			text(inner, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.55), Size = UDim2.fromOffset(40, 40), Text = it.Cfg.Icon, TextSize = 26, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5, TextStrokeTransparency = 1 })
+		-- themed picture behind the item's name (like a trading-card tile)
+		art(inner, (it.Kind == "Rod" and "Rod_" or "Chum_") .. it.Id, it.Color, 4, 0.58)
+		title(inner, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 4), Size = UDim2.new(1, -6, 1, -16), Text = shortName(it.Name), TextSize = 15,
+			TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 7, TextStrokeTransparency = 0.15 })
+		if it.Kind == "Chum" then
 			title(inner, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -4, 0, 2), Size = UDim2.fromOffset(40, 16), Text = "x" .. it.Count, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 7 })
 		end
 		local key = UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled and "" or tostring(i)
@@ -491,6 +537,8 @@ local function rebuildHotbar(d)
 	end
 	refs.HotEmpty.Visible = #items == 0
 	UI.RefreshHotbar()
+	task.defer(fitWallet)
+	task.delay(0.15, fitWallet) -- again once the layout has settled
 end
 
 local function cycleRods(dir)
@@ -548,7 +596,7 @@ task.spawn(function()
 end)
 
 ------------------------------------------------------------------ HUD
--- a dark pill with a thin accent outline (status / chum / meter / tutorial all share it)
+-- a dark pill with a thin accent outline (status / chum / meter / reel / picker / tutorial share it)
 local function pill(parent, props, accent)
 	local f = frame(parent, props, RADIUS, true)
 	f.BackgroundColor3 = C.Panel
@@ -597,30 +645,34 @@ local function buildHUD()
 	make("UIListLayout", { HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, toastHolder)
 
 	-- hotbar (bottom center): tile slots, then the bait tile
-	local holder = make("Frame", { Name = "Hotbar", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.fromOffset(0, 62), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1 }, root)
+	local holder = make("Frame", { Name = "Hotbar", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.fromOffset(0, SLOT), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1 }, root)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Bottom, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder }, holder)
-	local slots = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 62), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 1 }, holder)
+	local slots = make("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, SLOT), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 1 }, holder)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }, slots)
 	refs.HotSlots = slots
-	refs.HotEmpty = text(slots, { Size = UDim2.fromOffset(150, 62), Text = "Loading gear...", TextColor3 = C.Sub, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 0 })
+	refs.HotEmpty = text(slots, { Size = UDim2.fromOffset(150, SLOT), Text = "Loading gear...", TextColor3 = C.Sub, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 0 })
 	-- bait tile
-	local bait = button(holder, { Size = UDim2.fromOffset(170, 62), BackgroundColor3 = C.Green, LayoutOrder = 2 }, function() UI.TogglePicker("Bait") end)
-	refs.BaitIcon = text(bait, { Position = UDim2.fromOffset(6, 0), Size = UDim2.fromOffset(38, 62), TextSize = 26, TextXAlignment = Enum.TextXAlignment.Center, TextStrokeTransparency = 1, ZIndex = bait.ZIndex + 1 })
-	refs.BaitName = title(bait, { Position = UDim2.fromOffset(48, 13), Size = UDim2.new(1, -54, 0, 20), TextSize = 17, ZIndex = bait.ZIndex + 1 })
-	refs.BaitSub = text(bait, { Position = UDim2.fromOffset(48, 33), Size = UDim2.new(1, -54, 0, 16), TextSize = 13, TextColor3 = C.Sub, ZIndex = bait.ZIndex + 1 })
+	local bait = button(holder, { Size = UDim2.fromOffset(180, SLOT), BackgroundColor3 = C.Green, LayoutOrder = 2 }, function() UI.TogglePicker("Bait") end)
+	-- bait picture fills the left of the tile, faded, with the name over it
+	local baitArtBox = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(2, 2), Size = UDim2.fromOffset(SLOT - 4, SLOT - 4), ZIndex = bait.ZIndex + 1 }, bait)
+	refs.BaitArt = make("ImageLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ScaleType = Enum.ScaleType.Fit, ImageTransparency = 0.45, ZIndex = bait.ZIndex + 1 }, baitArtBox)
+	refs.BaitIcon = text(baitArtBox, { Size = UDim2.fromScale(1, 1), TextSize = 26, TextXAlignment = Enum.TextXAlignment.Center, TextStrokeTransparency = 1, ZIndex = bait.ZIndex + 2 })
+	refs.BaitName = title(bait, { Position = UDim2.fromOffset(58, 18), Size = UDim2.new(1, -64, 0, 20), TextSize = 18, ZIndex = bait.ZIndex + 3 })
+	refs.BaitSub = text(bait, { Position = UDim2.fromOffset(58, 39), Size = UDim2.new(1, -64, 0, 16), TextSize = 13, TextColor3 = C.Sub, ZIndex = bait.ZIndex + 3 })
 	title(bait, { Position = UDim2.fromOffset(6, 1), Size = UDim2.fromOffset(40, 14), Text = "BAIT", TextSize = 12, TextColor3 = C.Gold, ZIndex = bait.ZIndex + 1 })
 	refs.Bar = holder
+	refs.BarScale = make("UIScale", {}, holder)
 	-- item name above the hotbar
-	refs.ItemName = title(root, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -84), Size = UDim2.fromOffset(560, 24), TextSize = 20, TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 1, TextStrokeTransparency = 1 })
+	refs.ItemName = title(root, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -(SLOT + 22)), Size = UDim2.fromOffset(560, 24), TextSize = 20, TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 1, TextStrokeTransparency = 1 })
 
 	-- picker popup (bait)
-	local picker = pill(root, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -88), Size = UDim2.fromOffset(340, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, ZIndex = 20 }, C.Green)
+	local picker = pill(root, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -(SLOT + 26)), Size = UDim2.fromOffset(340, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, ZIndex = 20 }, C.Green)
 	pad(picker, 8)
 	make("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }, picker)
 	refs.Picker = picker
 
 	-- cast meter
-	local meter = pill(root, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -92), Size = UDim2.fromOffset(300, 44), Visible = false }, C.Edge)
+	local meter = pill(root, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -(SLOT + 30)), Size = UDim2.fromOffset(300, 44), Visible = false }, C.Edge)
 	local track = frame(meter, { Position = UDim2.fromOffset(12, 26), Size = UDim2.new(1, -24, 0, 8), BackgroundColor3 = C.Well }, 3, true)
 	refs.MeterFill = frame(track, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = WHITE }, 3, true)
 	make("UIGradient", { Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, C.Green), ColorSequenceKeypoint.new(0.5, C.Gold), ColorSequenceKeypoint.new(1, C.Red) }) }, refs.MeterFill)
@@ -758,11 +810,14 @@ end
 
 ------------------------------------------------------------------ bait picker
 local pickerKind
-local function pickerRow(icon, titleText, sub, rightText, selected, onClick, color)
+local function pickerRow(icon, titleText, sub, rightText, selected, onClick, color, artKey)
 	local acc = selected and C.Gold or (color or C.Accent):Lerp(C.Edge, 0.35)
 	local b = button(refs.Picker, { Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = acc, ZIndex = 21, Selectable = true }, onClick)
 	setAccent(b, acc, selected)
-	text(b, { Position = UDim2.fromOffset(6, 0), Size = UDim2.fromOffset(32, 46), Text = icon, TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 22, TextStrokeTransparency = 1 })
+	local box = make("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(4, 3), Size = UDim2.fromOffset(40, 40), ZIndex = 22 }, b)
+	if not art(box, artKey, color, 22, 0.25, 1) then
+		text(box, { Size = UDim2.fromScale(1, 1), Text = icon, TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 22, TextStrokeTransparency = 1 })
+	end
 	title(b, { Position = UDim2.fromOffset(44, 5), Size = UDim2.new(1, -116, 0, 18), Text = titleText, TextSize = 16, TextColor3 = WHITE, ZIndex = 22 })
 	text(b, { Position = UDim2.fromOffset(44, 24), Size = UDim2.new(1, -116, 0, 16), Text = sub, TextSize = 12, TextColor3 = C.Sub, ZIndex = 22 })
 	title(b, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 0), Size = UDim2.fromOffset(70, 46), Text = rightText or "", TextSize = 16, TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = C.Gold, ZIndex = 22 })
@@ -774,7 +829,7 @@ local function rebuildPicker()
 	for _, c in p:GetChildren() do if c:IsA("GuiObject") then c:Destroy() end end
 	local d = UI.Data
 	if not d or not pickerKind then return end
-	title(p, { Size = UDim2.new(1, 0, 0, 22), Text = "Attach bait", TextSize = 20, LayoutOrder = 0, ZIndex = 21 })
+	title(p, { Size = UDim2.new(1, 0, 0, 22), Text = "Attach Bait", TextSize = 20, LayoutOrder = 0, ZIndex = 21 })
 	text(p, { Size = UDim2.new(1, 0, 0, 14), Text = "One bait is used per cast", TextSize = 12, TextColor3 = C.Sub, LayoutOrder = 0, ZIndex = 21 })
 	local first
 	local none = pickerRow("⭕", "No bait", "Slower bites, no luck bonus", "", d.EquippedBait == nil, function()
@@ -791,7 +846,7 @@ local function rebuildPicker()
 			local row = pickerRow(b.Icon, b.Name, b.Desc, "x" .. n, d.EquippedBait == b.Id, function()
 				act("EquipBait", b.Id)
 				UI.TogglePicker(nil)
-			end, b.Color)
+			end, b.Color, "Bait_" .. b.Id)
 			row.LayoutOrder = 1 + b.Order
 		end
 	end
@@ -815,7 +870,7 @@ function UI.TogglePicker(kind, fromGamepad)
 	if fromGamepad and first then GuiService.SelectedObject = first end
 end
 
------------------------------------------------------------------- fish grid (inventory + sell tab share it)
+------------------------------------------------------------------ fish grid (bag + sell tab share it)
 local SORTS = { { "Value", C.Green }, { "Weight", C.Accent }, { "Rarity", C.Purple }, { "Name", C.Gold } }
 local sortBy = "Value"
 local selectedUid
@@ -866,7 +921,7 @@ local function fishTile(parent, f, i, onPick, selected)
 end
 
 -- the selected fish's detail strip: 3D model, name, stats and its actions
-local function detailBar(parent, d, sellMode, onRefresh)
+local function detailBar(parent, d, sellMode)
 	for _, c in parent:GetChildren() do if c:IsA("GuiObject") then c:Destroy() end end
 	local f
 	for _, x in d.Fish do if x.u == selectedUid then f = x end end
@@ -964,8 +1019,7 @@ local function statBar(parent, y, label, value, maxV, color)
 end
 
 local function card(h, accent)
-	local row = tile(shopList, { Size = UDim2.new(1, -8, 0, h), BackgroundColor3 = C.Panel2, ZIndex = 12 }, accent, 12)
-	return row
+	return tile(shopList, { Size = UDim2.new(1, -8, 0, h), BackgroundColor3 = C.Panel2, ZIndex = 12 }, accent, 12)
 end
 
 local function rebuildShop()
@@ -989,13 +1043,13 @@ local function rebuildShop()
 	if shopTab == "Rods" then
 		local owned = 0
 		for _, r in Config.Rods do if d.Rods[r.Id] then owned += 1 end end
-		shopHeader.Text = string.format("%d / %d rods owned", owned, #Config.Rods)
+		shopHeader.Text = string.format("%d / %d Rods Owned", owned, #Config.Rods)
 		for _, r in Config.Rods do
 			local tier = rodTier(r)
 			local row = card(84, tier)
 			row.LayoutOrder = r.Order
 			local iconBg = tile(row, { Position = UDim2.fromOffset(10, 10), Size = UDim2.fromOffset(64, 64), BackgroundColor3 = C.Well, ZIndex = 13 }, tier, 13)
-			rodIcon(iconBg, r, 14)
+			art(iconBg, "Rod_" .. r.Id, tier, 14, 0.12, 0.96)
 			title(row, { Position = UDim2.fromOffset(86, 8), Size = UDim2.fromOffset(240, 24), Text = r.Name, TextSize = 21, ZIndex = 13 })
 			local stats = make("Frame", { Position = UDim2.fromOffset(86, 34), Size = UDim2.fromOffset(210, 46), BackgroundTransparency = 1, ZIndex = 13 }, row)
 			statBar(stats, 0, "🍀 Luck x" .. r.Luck, r.Luck, 11, C.Green)
@@ -1016,12 +1070,14 @@ local function rebuildShop()
 	elseif shopTab == "Bait" or shopTab == "Chum" then
 		local list = shopTab == "Bait" and Config.Bait or Config.Chum
 		local qtys = shopTab == "Bait" and { 1, 10, 25 } or { 1, 5 }
-		shopHeader.Text = shopTab == "Bait" and "Bait boosts luck and bite speed — one is used per cast" or "Throw chum into the water to boost everyone's line there"
+		shopHeader.Text = shopTab == "Bait" and "Bait boosts luck and bite speed" or "Chum boosts every line in its ring"
 		for _, it in list do
 			local row = card(68, it.Color)
 			row.LayoutOrder = it.Order
 			local ib = tile(row, { Position = UDim2.fromOffset(10, 9), Size = UDim2.fromOffset(50, 50), BackgroundColor3 = C.Well, ZIndex = 13 }, it.Color, 13)
-			text(ib, { Size = UDim2.fromScale(1, 1), Text = it.Icon, TextSize = 26, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 14, TextStrokeTransparency = 1 })
+			if not art(ib, (shopTab == "Bait" and "Bait_" or "Chum_") .. it.Id, it.Color, 14, 0.12, 0.96) then
+				text(ib, { Size = UDim2.fromScale(1, 1), Text = it.Icon, TextSize = 26, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 14, TextStrokeTransparency = 1 })
+			end
 			title(row, { Position = UDim2.fromOffset(72, 9), Size = UDim2.fromOffset(300, 22), Text = it.Name .. "   " .. fmt(it.Price), TextSize = 19, ZIndex = 13 })
 			local owned = (shopTab == "Bait" and d.Bait or d.Chum)[it.Id] or 0
 			text(row, { Position = UDim2.fromOffset(72, 34), Size = UDim2.fromOffset(330, 18), Text = it.Desc .. (it.Duration and (" • " .. it.Duration .. "s") or "") .. "   (own " .. owned .. ")",
@@ -1037,7 +1093,7 @@ local function rebuildShop()
 	end
 end
 
--- kept for compatibility: list-style fish rows now render as the shared grid
+-- kept for compatibility: fish rows now render as the shared tile grid
 function UI.FishRows(list, sellMode)
 	local d = UI.Data
 	for i, f in sortedFish(d) do
@@ -1134,7 +1190,7 @@ end
 ------------------------------------------------------------------ tutorial (Old Gill speaks)
 local tutPage = 1
 local function buildTutorial()
-	local t = pill(root, { Name = "Tutorial", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -96), Size = UDim2.fromOffset(560, 140), Visible = false, ZIndex = 40 }, C.Gold:Lerp(C.Edge, 0.35))
+	local t = pill(root, { Name = "Tutorial", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -(SLOT + 34)), Size = UDim2.fromOffset(560, 140), Visible = false, ZIndex = 40 }, C.Gold:Lerp(C.Edge, 0.35))
 	tint(t, C.Gold, 0.12, 40)
 	make("UIScale", { Name = "Pop" }, t)
 	local face = tile(t, { Position = UDim2.fromOffset(14, 14), Size = UDim2.fromOffset(64, 64), BackgroundColor3 = C.Well, ZIndex = 41 }, C.Gold, 41)
@@ -1204,7 +1260,7 @@ function UI.Init(h)
 		root.Size = UDim2.fromScale(1 / s, 1 / s)
 	end
 	rescale()
-	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function() rescale() task.defer(fitWallet) end)
 	buildHUD()
 	buildShop()
 	buildInventory()
@@ -1225,8 +1281,11 @@ function UI.Update(d)
 	refs.BagText.Text = string.format("%d / %d fish%s", #d.Fish, Config.InventoryCap, full and "  •  FULL" or "")
 	refs.BagText.TextColor3 = full and C.Red or C.Cream
 	local b = d.EquippedBait and Config.BaitById[d.EquippedBait]
+	local baitArt = b and ICONS["Bait_" .. b.Id]
+	refs.BaitArt.Image = baitArt and ("rbxassetid://" .. baitArt) or ""
+	refs.BaitArt.ImageColor3 = b and b.Color:Lerp(WHITE, 0.5) or WHITE
 	if b then
-		refs.BaitIcon.Text = b.Icon
+		refs.BaitIcon.Text = baitArt and "" or b.Icon
 		refs.BaitName.Text = b.Name
 		refs.BaitSub.Text = "x" .. (d.Bait[b.Id] or 0) .. "  •  +" .. math.floor(b.Luck * 100) .. "% luck"
 	else
@@ -1235,6 +1294,7 @@ function UI.Update(d)
 		refs.BaitSub.Text = "Tap to attach"
 	end
 	rebuildHotbar(d)
+	task.defer(fitWallet)
 	if refs.Picker.Visible then rebuildPicker() end
 	if openPanel == "Shop" then rebuildShop()
 	elseif openPanel == "Inventory" then rebuildInventory()
